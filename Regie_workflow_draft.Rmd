@@ -14,42 +14,57 @@ library(dplyr)
 # Exploring the annovar output:
 
 ```{r}
-annovar_output <- read_csv("/Users/cojulian/Desktop/Tzu_projects/Regie/cleaningup_regie/running_annovar_hg38/test_loftee_to_annovar/annovar_results_loftee_test_files/98.hg38_multianno.csv")
+annovar_output <- read_delim("/Volumes/Extreme_SSD/Regie/annovar_keepingallcols_afterloftee_results/100.hg38_multianno.txt")
 
 ```
 
 ## Filtered clinvar matches
 
 ```{r}
-# Make sure this is all 'OR' and not 'AND'
-# Prepare and filter `info_annovar_output_tidy` based on pathogenicity criteria
-filtered_variants <- annovar_output %>%
-  mutate(
-    DANN_score_numeric = as.numeric(replace(DANN_score, DANN_score == ".", NA))
-    # Uncomment the following line if the column exists
-    # CADD_phred_numeric = as.numeric(replace(CADD_phred, CADD_phred == ".", NA))
-  ) %>%
-  filter(
-    # Additional pathogenic criteria
-    (SIFT_pred == "D") |
-    (LRT_pred == "D") |
-    (MutationTaster_pred %in% c("D", "A")) |
-    (FATHMM_pred == "D") |
-    (PROVEAN_pred == "D") |
-    (MetaSVM_pred == "D") |
-    (MetaLR_pred == "D") |
-    
-    # DANN score > 0.9
-    (DANN_score_numeric > 0.9)
-    
-    # Uncomment the following lines if the columns exist
-    # PolyPhen predictions
-    # | (Polyphen2_HDIV_pred %in% c("D", "P"))
-    # | (Polyphen2_HVAR_pred %in% c("D", "P"))
-    
-    # CADD phred score > 10
-    # | (CADD_phred_numeric > 10)
-  )
+annovar_output <- annovar_output %>%
+    mutate(DANN_score_numeric = as.numeric(replace(DANN_score, DANN_score == ".", NA))) %>%
+    mutate(across(starts_with("gnomad41_exome_AF_"), ~ replace(., . == ".", NA))) %>%
+    mutate(across(starts_with("GME_"), ~ replace(., . == ".", NA))) %>%
+    mutate(across(starts_with("gnomad41_exome_AF_"), ~ as.numeric(.))) %>%
+    mutate(across(starts_with("GME_"), ~ as.numeric(.)))
+
+  # Apply pathogenicity filtering first
+  filtered_variants <- annovar_output %>%
+    filter(
+      (SIFT_pred == "D") |
+      (LRT_pred == "D") |
+      (MutationTaster_pred %in% c("D", "A")) |
+      (FATHMM_pred == "D") |
+      (PROVEAN_pred == "D") |
+      (MetaSVM_pred == "D") |
+      (MetaLR_pred == "D") |
+      (DANN_score_numeric > 0.9)
+    ) %>%
+    # Apply the MAF filtering dynamically using gnomad_GME_param
+    filter(
+      (gnomad41_exome_AF_afr <= gnomad_GME_param | is.na(gnomad41_exome_AF_afr)) |
+      (gnomad41_exome_AF_amr <= gnomad_GME_param | is.na(gnomad41_exome_AF_amr)) |
+      (gnomad41_exome_AF_asj <= gnomad_GME_param | is.na(gnomad41_exome_AF_asj)) |
+      (gnomad41_exome_AF_eas <= gnomad_GME_param | is.na(gnomad41_exome_AF_eas)) |
+      (gnomad41_exome_AF_fin <= gnomad_GME_param | is.na(gnomad41_exome_AF_fin)) |
+      (gnomad41_exome_AF_mid <= gnomad_GME_param | is.na(gnomad41_exome_AF_mid)) |
+      (gnomad41_exome_AF_nfe <= gnomad_GME_param | is.na(gnomad41_exome_AF_nfe)) |
+      (gnomad41_exome_AF_remaining <= gnomad_GME_param | is.na(gnomad41_exome_AF_remaining)) |
+      (gnomad41_exome_AF_sas <= gnomad_GME_param | is.na(gnomad41_exome_AF_sas)) |
+      (GME_NWA <= gnomad_GME_param | is.na(GME_NWA)) |
+      (GME_NEA <= gnomad_GME_param | is.na(GME_NEA)) |
+      (GME_AP <= gnomad_GME_param | is.na(GME_AP)) |
+      (GME_Israel <= gnomad_GME_param | is.na(GME_Israel)) |
+      (GME_SD <= gnomad_GME_param | is.na(GME_SD)) |
+      (GME_TP <= gnomad_GME_param | is.na(GME_TP)) |
+      (GME_CA <= gnomad_GME_param | is.na(GME_CA))
+    ) %>%
+    filter(Gene.refGene %in% sample_genelist)  # Subset based on 'Gene.refGene'
+  
+  # Convert NA values back to "." for consistency with original ANNOVAR format
+  filtered_variants <- filtered_variants %>%
+    mutate(across(starts_with("gnomad41_exome_AF_"), ~ ifelse(is.na(.), ".", as.character(.)))) %>%
+    mutate(across(starts_with("GME_"), ~ ifelse(is.na(.), ".", as.character(.))))
 
 ```
 
@@ -71,543 +86,25 @@ otoscope_genelist <- read_csv("Otoscope_v9_072924_with_header.csv")
 ### Filtering by Otoscope
 
 ```{r}
-Otoscope_filtered <- filtered_variants %>%
+Microtia_gl <- filtered_variants %>%
   filter(Gene.refGene %in% otoscope_genelist$Gene)
 
 dim(Otoscope_filtered)
 ```
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-Run annovar on the 38 and filter in R. Expect Helens tsv files
-
 ```{r}
-library(liftOver)
+# Define the output file path
+output_path <- "/Users/cojulian/Desktop/Tzu_projects/Regie/cleaningup_regie/running_annovar_hg38/final_filtering_Feb_9/100_keepingcolumns_Microtia.csv"
 
-# Read your TSV file into a data frame
-file_path <- "/Users/cojulian/Desktop/Tzu_projects/Regie/cleaningup_regie/running_annovar_hg38/MT_tresults_tsv/103_31_001C.tsv"
-df <- read.delim(file_path, stringsAsFactors = FALSE)
-
-# Remove rows with NAs in the Position column
-df <- df %>% filter(!is.na(Position))
-
-
-# Create a GRanges object from the Chr and Position columns
-gr <- GRanges(seqnames = paste0("chr", df$Chr),
-              ranges = IRanges(start = df$Position, end = df$Position))
-
-# Load the chain file for hg19 to hg38 transformation
-path <- "/Users/cojulian/Desktop/Tzu_projects/Regie/cleaningup_regie/running_annovar_hg38/MT_tresults_tsv/hg19ToHg38.over.chain"
-ch <- import.chain(path)
-
-# Perform the liftOver transformation
-seqlevelsStyle(gr) <- "UCSC"  # necessary
-gr38 <- liftOver(gr, ch)
-gr38 <- unlist(gr38)
-
-# Create a data frame from the transformed GRanges object
-gr38_df <- data.frame(Chr = as.character(seqnames(gr38)),
-                      Position = start(gr38),
-                      stringsAsFactors = FALSE)
-
-# Add an index column to the original data frame
-df$Index <- 1:nrow(df)
-
-# Merge the original data frame with the transformed coordinates
-df_transformed_all <- merge(df, gr38_df, by.x = c("Chr", "Position"), by.y = c("Chr", "Position"), all.x = TRUE)
-
-# Separate the rows with missing transformed coordinates
-df_missing <- df_transformed_all[is.na(df_transformed_all$Position), ]
-df_transformed <- df_transformed_all[!is.na(df_transformed_all$Position), ]
-
-# Remove duplicates based on Chr and Position (keeping first occurrence)
-df_cleaned <- df_transformed %>%
-  distinct(Chr, Position, .keep_all = TRUE)
-
-# View the cleaned dataset
-head(df_cleaned)
-dim(df_cleaned)  # Check new dimensions
-
-```
-
-## Merging Data Frames by Position, Chromosome, and Gene Name
-
-```{r}
-# Step 1: Add "chr" prefix to the Chr column in filtered_variants
-filtered_variants$Chr <- str_remove(filtered_variants$Chr, "chr")
-
-# Merge data frames by position, chromosome, and gene name
-merged_df1 <- merge(filtered_variants, df_cleaned, by.x = c("Chr", "Start", "Gene.refGene"), by.y = c("Chr", "Position", "Gene"))
-
-# Print the merged data frame
-print(merged_df1)
-```
-
-## Merging Data Frames by Position, Chromosome, and Gene Name, Keeping All Rows from filtered_variants
-
-
-```{r}
-merged_df2 <- merge(filtered_variants, df_cleaned, by.x = c("Chr", "Start", "Gene.refGene"), by.y = c("Chr", "Position", "Gene"), all.x = TRUE)
-
-# Print the merged data frame
-print(merged_df2)
-```
-
-
-
-## Running a first try for one of the samples:
-
-```{r}
-# Load necessary libraries
-library(tidyverse)
-library(liftOver)
-library(rtracklayer)
-
-# Define paths
-annovar_file <- "/Users/cojulian/Desktop/Tzu_projects/Regie/cleaningup_regie/running_annovar_hg38/annovar_results/77.hg38_multianno.csv"
-mt_file <- "/Users/cojulian/Desktop/Tzu_projects/Regie/cleaningup_regie/running_annovar_hg38/MT_tresults_tsv/77_20023C.tsv"
-output_dir <- "/Users/cojulian/Desktop/Tzu_projects/Regie/cleaningup_regie/running_annovar_hg38/filtered_MT_results"
-chain_file <- "/Users/cojulian/Desktop/Tzu_projects/Regie/cleaningup_regie/running_annovar_hg38/MT_tresults_tsv/hg19ToHg38.over.chain"
-otoscope_genelist_path <- "Otoscope_v9_072924_with_header.csv"
-
-# Load Otoscope gene list
-otoscope_genelist <- read_csv(otoscope_genelist_path)
-
-# Load chain file for liftOver
-ch <- import.chain(chain_file)
-
-# Function to process a single sample
-process_sample <- function(annovar_file, mt_file, output_dir) {
-  # Read ANNOVAR output
-  annovar_output <- read_csv(annovar_file)
-  
-  # Filter ANNOVAR output based on pathogenicity criteria
-  filtered_variants <- annovar_output %>%
-    mutate(
-      DANN_score_numeric = as.numeric(replace(DANN_score, DANN_score == ".", NA))
-    ) %>%
-    filter(
-      (SIFT_pred == "D") |
-      (LRT_pred == "D") |
-      (MutationTaster_pred %in% c("D", "A")) |
-      (FATHMM_pred == "D") |
-      (PROVEAN_pred == "D") |
-      (MetaSVM_pred == "D") |
-      (MetaLR_pred == "D") |
-      (DANN_score_numeric > 0.9)
-    )
-  
-  # Read MT results
-  df <- read.delim(mt_file, stringsAsFactors = FALSE)
-  
-  # Filter out rows with NAs in the Position column
-  df <- df %>% filter(!is.na(position))
-  
-  # Clean the genesymbol column by removing <br> and any text after it
-  df$genesymbol <- str_replace_all(df$genesymbol, "<br>.*", "")
-  
-  # Create GRanges object and perform liftOver
-  gr <- GRanges(seqnames = paste0("chr", df$chromosome),
-                ranges = IRanges(start = df$position, end = df$position))
-  seqlevelsStyle(gr) <- "UCSC"
-  gr38 <- liftOver(gr, ch)
-  gr38 <- unlist(gr38)
-  
-  # Create data frame from transformed GRanges object
-  gr38_df <- data.frame(Chr = as.character(seqnames(gr38)),
-                        Position = start(gr38),
-                        stringsAsFactors = FALSE)
-  
-  # Merge with original data
-  df$Index <- 1:nrow(df)
-  df_transformed_all <- merge(df, gr38_df, by.x = c("chromosome", "position"), by.y = c("Chr", "Position"), all.x = TRUE)
-  df_missing <- df_transformed_all[is.na(df_transformed_all$Position), ]
-  df_transformed <- df_transformed_all[!is.na(df_transformed_all$Position), ]
-  df_cleaned <- df_transformed %>% distinct(chromosome, position, .keep_all = TRUE)
-  
-  # Merge filtered variants with cleaned MT results
-  filtered_variants$Chr <- str_remove(filtered_variants$Chr, "chr")
-  merged_df2 <- merge(filtered_variants, df_cleaned, by.x = c("Chr", "Start", "Gene.refGene"), by.y = c("chromosome", "position", "genesymbol"), all.x = TRUE)
-  
-  # Filter by Otoscope gene list
-  Otoscope_filtered <- merged_df2 %>% filter(Gene.refGene %in% otoscope_genelist$Gene)
-
-# Create output directory for the sample
-  sample_id <- tools::file_path_sans_ext(basename(mt_file))  # Use the MT file name instead of     ANNOVAR file
-  sample_output_dir <- file.path(output_dir, sample_id)
-  dir.create(sample_output_dir, showWarnings = FALSE)
-
-  # Save Otoscope_filtered as CSV
-  output_file <- file.path(sample_output_dir, paste0(sample_id, "_Otoscope_filtered.csv"))
-  write_csv(Otoscope_filtered, output_file)
-
-  cat("Processed and saved results for sample:", sample_id, "\n")
-}
-
-```
-
-## Running one sample
-```{r}
-# Process sample 77
-process_sample(annovar_file, mt_file, output_dir)
-```
-## Creating a table
-
-```{r}
-# Set your directories (update these paths if necessary)
-mt_dir <- "/Users/cojulian/Desktop/Tzu_projects/Regie/cleaningup_regie/running_annovar_hg38/MT_tresults_tsv"
-annovar_dir <- "/Users/cojulian/Desktop/Tzu_projects/Regie/cleaningup_regie/running_annovar_hg38/annovar_results"
-
-# List the MT tsv files and annovar csv files with full paths
-mt_files <- list.files(mt_dir, pattern = "\\.tsv$", full.names = TRUE)
-annovar_files <- list.files(annovar_dir, pattern = "\\.csv$", full.names = TRUE)
-
-# Extract sample ids from the filenames:
-# For MT, extract the first number from the file name (e.g., "103_31_001C.tsv" -> "103")
-mt_ids <- sub("^([0-9]+).*", "\\1", basename(mt_files))
-
-# For annovar, extract the number before the first dot (e.g., "103.hg38_multianno.csv" -> "103")
-annovar_ids <- sub("^([0-9]+).*", "\\1", basename(annovar_files))
-
-# Build individual data frames:
-mt_df <- data.frame(
-  sample_id = mt_ids,
-  MT_output = mt_files,
-  stringsAsFactors = FALSE
-)
-
-annovar_df <- data.frame(
-  sample_id = annovar_ids,
-  annovar_output = annovar_files,
-  stringsAsFactors = FALSE
-)
-
-# Merge the two data frames by sample_id
-combined_df <- merge(annovar_df, mt_df, by = "sample_id", all = TRUE)
-
-# Optionally, sort the data frame by sample_id
-combined_df <- combined_df[order(as.numeric(combined_df$sample_id)), ]
-
-# View the final table
-print(combined_df)
-
-paired_df <- combined_df %>% 
-  filter(!is.na(MT_output))
-
+# Save the filtered variants to CSV
+write.csv(filtered_results, output_path, row.names = FALSE)
 ```
 
 
 
 
-## Running the first row of the table:
 
-```{r}
-# Load necessary libraries
-library(tidyverse)
-library(liftOver)
-library(rtracklayer)
-library(stringr)
-
-# --- Set up file paths based on the first row of your paired table ---
-# Assume paired_df is already in your workspace.
-first_row    <- paired_df[1, ]
-annovar_file <- first_row$annovar_output
-mt_file      <- first_row$MT_output
-
-# Define other required paths (update if needed)
-chain_file               <- "/Users/cojulian/Desktop/Tzu_projects/Regie/cleaningup_regie/running_annovar_hg38/MT_tresults_tsv/hg19ToHg38.over.chain"
-output_dir               <- "/Users/cojulian/Desktop/Tzu_projects/Regie/cleaningup_regie/running_annovar_hg38/filtered_MT_results"
-otoscope_genelist_path   <- "Otoscope_v9_072924_with_header.csv"
-
-# Load the Otoscope gene list
-otoscope_genelist <- read_csv(otoscope_genelist_path)
-
-# Load the chain file for liftOver
-ch <- import.chain(chain_file)
-
-# --- Exploring the annovar output ---
-annovar_output <- read_csv(annovar_file)
-
-# --- Filtered ClinVar Matches from Annovar ---
-filtered_variants <- annovar_output %>%
-    mutate(
-        DANN_score_numeric = as.numeric(replace(DANN_score, DANN_score == ".", NA))
-        # Uncomment and adjust if you want to use other columns (e.g., CADD_phred)
-        # CADD_phred_numeric = as.numeric(replace(CADD_phred, CADD_phred == ".", NA))
-    ) %>%
-    filter(
-        # Use OR conditions for pathogenic predictions:
-        (SIFT_pred == "D") |
-            (LRT_pred == "D") |
-            (MutationTaster_pred %in% c("D", "A")) |
-            (FATHMM_pred == "D") |
-            (PROVEAN_pred == "D") |
-            (MetaSVM_pred == "D") |
-            (MetaLR_pred == "D") |
-            (DANN_score_numeric > 0.9)
-        # You can add more filters (e.g., PolyPhen, CADD) if desired.
-    )
-
-# Print the filtered variants
-print(filtered_variants)
-
-# --- Read and Process the MT TSV File (e.g., sample 73) ---
-# Read the file (note: the column names are "chromosome", "position", "genesymbol", etc.)
-df <- read.delim(mt_file, stringsAsFactors = FALSE)
-
-# Remove rows with missing positions using the correct column name (all lowercase)
-df <- df %>% dplyr::filter(!is.na(position))
-
-# Rename the 'chromosome' column to 'Chr' to match the annovar file’s keys
-df <- df %>% dplyr::rename(Chr = chromosome)
-
-# Create a GRanges object using the correct column names from the MT file
-gr <- GRanges(
-    seqnames = paste0("chr", df$Chr),
-    ranges   = IRanges(start = df$position, end = df$position)
-)
-
-# Set seqlevels style to UCSC and perform liftOver
-seqlevelsStyle(gr) <- "UCSC"
-gr38 <- liftOver(gr, ch)
-gr38 <- unlist(gr38)
-
-# Create a data frame from the transformed GRanges object
-gr38_df <- data.frame(
-    Chr      = as.character(seqnames(gr38)),
-    Position = start(gr38),
-    stringsAsFactors = FALSE
-)
-
-# Add an index column to the original df (for tracking if needed)
-df$Index <- 1:nrow(df)
-
-# Merge the original df with the lifted coordinates.
-# We merge the original columns "Chr" and "position" with gr38_df’s "Chr" and "Position".
-df_transformed_all <- merge(df, gr38_df,
-                            by.x = c("Chr", "position"),
-                            by.y = c("Chr", "Position"),
-                            all.x = TRUE)
-
-# Separate out rows with missing lifted coordinates (if any)
-df_missing     <- df_transformed_all[is.na(df_transformed_all$position), ]
-df_transformed <- df_transformed_all[!is.na(df_transformed_all$position), ]
-
-# Remove duplicate rows based on Chr and position (keeping first occurrence)
-df_cleaned <- df_transformed %>% distinct(Chr, position, .keep_all = TRUE)
-
-# Rename the key columns to match the annovar file’s keys:
-# - Rename "position" to "Position"
-# - Rename "genesymbol" to "Gene"
-df_cleaned <- df_cleaned %>% 
-    dplyr::rename(Position = position, Gene = genesymbol)
-
-# Check the cleaned data
-head(df_cleaned)
-dim(df_cleaned)
-
-# --- Merge Filtered Annovar Variants with Cleaned MT Results ---
-# In the annovar output, the "Chr" column may include the "chr" prefix.
-# Remove it so that it matches the MT file format (which is now numeric after renaming).
-filtered_variants$Chr <- str_remove(filtered_variants$Chr, "chr")
-
-# Merge by:
-#   Annovar keys: "Chr", "Start", "Gene.refGene"
-#   MT file keys (from df_cleaned): "Chr", "Position", "Gene"
-merged_df1 <- merge(filtered_variants, df_cleaned,
-                    by.x = c("Chr", "Start", "Gene.refGene"),
-                    by.y = c("Chr", "Position", "Gene"),
-                    all.x = FALSE)
-print(merged_df1)
-
-# Alternatively, if you want to keep all rows from the filtered annovar data:
-merged_df2 <- merge(filtered_variants, df_cleaned,
-                    by.x = c("Chr", "Start", "Gene.refGene"),
-                    by.y = c("Chr", "Position", "Gene"),
-                    all.x = TRUE)
-print(merged_df2)
-
-# --- Filter by the Otoscope Gene List ---
-Otoscope_filtered <- merged_df2 %>%
-    dplyr::filter(Gene.refGene %in% otoscope_genelist$Gene)
-
-# Print the dimensions of the Otoscope-filtered results
-dim(Otoscope_filtered)
-
-# Create output directory for the sample
-sample_id <- tools::file_path_sans_ext(basename(mt_file))  # Use the MT file name without extension
-sample_output_dir <- file.path(output_dir, sample_id)
-dir.create(sample_output_dir, showWarnings = FALSE, recursive = TRUE)
-
-# Save Otoscope_filtered as CSV
-output_file <- file.path(sample_output_dir, paste0(sample_id, "_Otoscope_filtered.csv"))
-write_csv(Otoscope_filtered, output_file)
-
-cat("Processed and saved results for sample:", sample_id, "\n")
-```
-
-## Now trying a kind of loop:
-
-```{r}
-# Load necessary libraries
-library(tidyverse)
-library(liftOver)
-library(rtracklayer)
-library(stringr)
-
-# Define other required paths (update if needed)
-chain_file               <- "/Users/cojulian/Desktop/Tzu_projects/Regie/cleaningup_regie/running_annovar_hg38/MT_tresults_tsv/hg19ToHg38.over.chain"
-output_dir               <- "/Users/cojulian/Desktop/Tzu_projects/Regie/cleaningup_regie/running_annovar_hg38/filtered_MT_results"
-otoscope_genelist_path   <- "Otoscope_v9_072924_with_header.csv"
-
-# Load the Otoscope gene list
-otoscope_genelist <- read_csv(otoscope_genelist_path)
-
-# Load the chain file for liftOver
-ch <- import.chain(chain_file)
-
-# Function to process a single sample
-process_sample <- function(annovar_file, mt_file, output_dir) {
-  # --- Exploring the annovar output ---
-  annovar_output <- read_csv(annovar_file)
-
-  # --- Filtered ClinVar Matches from Annovar ---
-  filtered_variants <- annovar_output %>%
-    mutate(
-      DANN_score_numeric = as.numeric(replace(DANN_score, DANN_score == ".", NA))
-      # Uncomment and adjust if you want to use other columns (e.g., CADD_phred)
-      # CADD_phred_numeric = as.numeric(replace(CADD_phred, CADD_phred == ".", NA))
-    ) %>%
-    filter(
-      # Use OR conditions for pathogenic predictions:
-      (SIFT_pred == "D") |
-        (LRT_pred == "D") |
-        (MutationTaster_pred %in% c("D", "A")) |
-        (FATHMM_pred == "D") |
-        (PROVEAN_pred == "D") |
-        (MetaSVM_pred == "D") |
-        (MetaLR_pred == "D") |
-        (DANN_score_numeric > 0.9)
-      # You can add more filters (e.g., PolyPhen, CADD) if desired.
-    )
-
-  # Print the filtered variants
-  print(filtered_variants)
-
-  # --- Read and Process the MT TSV File ---
-  df <- read.delim(mt_file, stringsAsFactors = FALSE)
-  
-  # Ensure the 'Position' column is in lowercase
-  colnames(df)[colnames(df) == "Position"] <- "position"
-  
-  # Check if the data frame is empty
-  if (nrow(df) == 0) {
-    stop("Error: MT results data frame is empty.")
-  }
-  
-  # Remove rows with missing positions using the correct column name (all lowercase)
-  df <- df %>% dplyr::filter(!is.na(position))
-
-  # Rename the 'chromosome' column to 'Chr' to match the annovar file’s keys
-  df <- df %>% dplyr::rename(Chr = chromosome)
-
-  # Create a GRanges object using the correct column names from the MT file
-  gr <- GRanges(
-    seqnames = paste0("chr", df$Chr),
-    ranges   = IRanges(start = df$position, end = df$position)
-  )
-
-  # Set seqlevels style to UCSC and perform liftOver
-  seqlevelsStyle(gr) <- "UCSC"
-  gr38 <- liftOver(gr, ch)
-  gr38 <- unlist(gr38)
-
-  # Create a data frame from the transformed GRanges object
-  gr38_df <- data.frame(
-    Chr      = as.character(seqnames(gr38)),
-    Position = start(gr38),
-    stringsAsFactors = FALSE
-  )
-
-  # Add an index column to the original df (for tracking if needed)
-  df$Index <- 1:nrow(df)
-
-  # Merge the original df with the lifted coordinates.
-  df_transformed_all <- merge(df, gr38_df,
-                              by.x = c("Chr", "position"),
-                              by.y = c("Chr", "Position"),
-                              all.x = TRUE)
-
-  # Separate out rows with missing lifted coordinates (if any)
-  df_missing     <- df_transformed_all[is.na(df_transformed_all$position), ]
-  df_transformed <- df_transformed_all[!is.na(df_transformed_all$position), ]
-
-  # Remove duplicate rows based on Chr and position (keeping first occurrence)
-  df_cleaned <- df_transformed %>% distinct(Chr, position, .keep_all = TRUE)
-
-  # Rename the key columns to match the annovar file’s keys:
-  df_cleaned <- df_cleaned %>% 
-    dplyr::rename(Position = position, Gene = genesymbol)
-
-  # Check the cleaned data
-  head(df_cleaned)
-  dim(df_cleaned)
-
-  # --- Merge Filtered Annovar Variants with Cleaned MT Results ---
-  filtered_variants$Chr <- str_remove(filtered_variants$Chr, "chr")
-
-  merged_df1 <- merge(filtered_variants, df_cleaned,
-                      by.x = c("Chr", "Start", "Gene.refGene"),
-                      by.y = c("Chr", "Position", "Gene"),
-                      all.x = FALSE)
-  print(merged_df1)
-
-  merged_df2 <- merge(filtered_variants, df_cleaned,
-                      by.x = c("Chr", "Start", "Gene.refGene"),
-                      by.y = c("Chr", "Position", "Gene"),
-                      all.x = TRUE)
-  print(merged_df2)
-
-  # --- Filter by the Otoscope Gene List ---
-  Otoscope_filtered <- merged_df2 %>%
-    dplyr::filter(Gene.refGene %in% otoscope_genelist$Gene)
-
-  # Print the dimensions of the Otoscope-filtered results
-  dim(Otoscope_filtered)
-
-  # Create output directory for the sample
-  sample_id <- tools::file_path_sans_ext(basename(mt_file))  # Use the MT file name without extension
-  sample_output_dir <- file.path(output_dir, sample_id)
-  dir.create(sample_output_dir, showWarnings = FALSE, recursive = TRUE)
-
-  # Save Otoscope_filtered as CSV
-  output_file <- file.path(sample_output_dir, paste0(sample_id, "_Otoscope_filtered.csv"))
-  write_csv(Otoscope_filtered, output_file)
-
-  cat("Processed and saved results for sample:", sample_id, "\n")
-}
-
-# Iterate through all rows in paired_df
-for (i in 1:nrow(paired_df)) {
-  annovar_file <- paired_df$annovar_output[i]
-  mt_file <- paired_df$MT_output[i]
-  process_sample(annovar_file, mt_file, output_dir)
-}  
-```
 
 # First draft of results for hearing loss:
 
@@ -652,10 +149,10 @@ first_part_data_dict <- data.frame(
                         )
 
 # Define the base directory where the files are located
-base_dir <- "/Volumes/Extreme_SSD/Regie/annovar_afterloftee_results/"
+base_dir <- "/Volumes/Extreme_SSD/Regie/annovar_keepingallcols_afterloftee_results/"
 
 # Add a new column with the full file paths
-first_part_data_dict$file_path <- paste0(base_dir, first_part_data_dict$id, ".hg38_multianno.csv")
+first_part_data_dict$file_path <- paste0(base_dir, first_part_data_dict$id, ".hg38_multianno.txt")
 
 # View the updated data dictionary
 print(first_part_data_dict)
@@ -670,6 +167,52 @@ first_part_data_dict <- first_part_data_dict %>%
     ))
 ```
 
+## Converting to fst
+
+```{r}
+library(data.table)
+library(fst)
+library(parallel)
+library(foreach)
+library(doParallel)
+
+# Set up parallel processing
+num_cores <- detectCores() - 1  # Use all but one core
+cl <- makeCluster(num_cores)
+registerDoParallel(cl)
+
+# List of file paths to process
+file_paths <- first_part_data_dict$file_path
+
+# Function to convert a single file to .fst format
+convert_to_fst <- function(file_path) {
+    # Load the .txt file using fread
+    annovar_output <- fread(file_path, sep = "\t")
+    
+    # Define the output .fst file path
+    fst_file_path <- gsub("\\.txt$", ".fst", file_path)
+    
+    # Save the file in .fst format
+    write_fst(annovar_output, fst_file_path)
+    
+    # Return the path of the saved .fst file
+    return(fst_file_path)
+}
+
+# Process files in parallel
+fst_file_paths <- foreach(file_path = file_paths, .packages = c("data.table", "fst")) %dopar% {
+    convert_to_fst(file_path)
+}
+
+# Stop the parallel cluster
+stopCluster(cl)
+
+# Print the paths of the saved .fst files
+print(fst_file_paths)
+```
+
+
+
 # Function for testing one
 
 ## Loading Gene lists
@@ -677,9 +220,9 @@ first_part_data_dict <- first_part_data_dict %>%
 ```{r}
 # Load gene lists into a named list
 gene_lists <- list(
-  "Hearing_loss_gl" = read_csv("Otoscope_v9_072924_with_header.csv") %>% select(Gene),
-  "EATEF_gl" = readxl::read_excel("EATEF_genelist.xlsx") %>% select(Gene),
-  "Microtia_gl" = readxl::read_excel("Microtia_genelist.xlsx") %>% select(Gene)
+  "Hearing_loss_gl" = read_csv("Otoscope_v9_072924_with_header.csv") %>% dplyr::select(Gene),
+  "EATEF_gl" = readxl::read_excel("EATEF_genelist.xlsx") %>% dplyr::select(Gene),
+  "Microtia_gl" = readxl::read_excel("Microtia_genelist.xlsx") %>% dplyr::select(Gene)
 )
 ```
 
@@ -693,48 +236,64 @@ process_annovar_results <- function(annovar_output, sample_id, data_dict, gene_l
   
   gnomad_GME_param <- sample_info$gnomad_GME_parameter
   gene_list_name <- sample_info$genelist  # Get the reference to gene list
-  
+  phenotype <- sample_info$phenotype
   # Get the actual gene list based on the reference
   sample_genelist <- gene_lists[[gene_list_name]]$Gene
   
-  # Convert columns to numeric
+  # Convert MAF columns to numeric, replacing "." with NA
   annovar_output <- annovar_output %>%
-    mutate(DANN_score_numeric = as.numeric(replace(DANN_score, DANN_score == ".", NA))) #%>%
-    # dplyr::mutate(across(starts_with("gnomad41_exome_AF_"), as.numeric)) %>%
-    # mutate(across(starts_with("GME_"), as.numeric))
-  
-  # Apply filtering
+    mutate(DANN_score_numeric = as.numeric(replace(DANN_score, DANN_score == ".", NA))) %>%
+    mutate(across(starts_with("gnomad41_exome_AF_"), ~ replace(., . == ".", NA))) %>%
+    mutate(across(starts_with("GME_"), ~ replace(., . == ".", NA))) %>%
+    mutate(across(starts_with("gnomad41_exome_AF_"), ~ as.numeric(.))) %>%
+    mutate(across(starts_with("GME_"), ~ as.numeric(.)))
+
+  # Apply pathogenicity filtering first
   filtered_variants <- annovar_output %>%
     filter(
-      (SIFT_pred == "D") | 
-      (LRT_pred == "D") | 
-      (MutationTaster_pred %in% c("D", "A")) | 
-      (FATHMM_pred == "D") | 
-      (PROVEAN_pred == "D") | 
-      (MetaSVM_pred == "D") | 
-      (MetaLR_pred == "D") | 
-      (DANN_score_numeric > 0.9) |
-      (gnomad41_exome_AF_afr <= gnomad_GME_param) |
-      (gnomad41_exome_AF_amr <= gnomad_GME_param) |
-      (gnomad41_exome_AF_asj <= gnomad_GME_param) |
-      (gnomad41_exome_AF_eas <= gnomad_GME_param) |
-      (gnomad41_exome_AF_fin <= gnomad_GME_param) |
-      (gnomad41_exome_AF_mid <= gnomad_GME_param) |
-      (gnomad41_exome_AF_nfe <= gnomad_GME_param) |
-      (gnomad41_exome_AF_remaining <= gnomad_GME_param) |
-      (gnomad41_exome_AF_sas <= gnomad_GME_param) |
-      (GME_NWA <= gnomad_GME_param) |
-      (GME_NEA <= gnomad_GME_param) |
-      (GME_AP <= gnomad_GME_param) |
-      (GME_Israel <= gnomad_GME_param) |
-      (GME_SD <= gnomad_GME_param) |
-      (GME_TP <= gnomad_GME_param) |
-      (GME_CA <= gnomad_GME_param)
+      (SIFT_pred == "D") |
+      (LRT_pred == "D") |
+      (MutationTaster_pred %in% c("D", "A")) |
+      (FATHMM_pred == "D") |
+      (PROVEAN_pred == "D") |
+      (MetaSVM_pred == "D") |
+      (MetaLR_pred == "D") |
+      (DANN_score_numeric > 0.9)
+    ) %>%
+    # Apply the MAF filtering dynamically using gnomad_GME_param
+    filter(
+      (gnomad41_exome_AF_afr <= gnomad_GME_param | is.na(gnomad41_exome_AF_afr)) |
+      (gnomad41_exome_AF_amr <= gnomad_GME_param | is.na(gnomad41_exome_AF_amr)) |
+      (gnomad41_exome_AF_asj <= gnomad_GME_param | is.na(gnomad41_exome_AF_asj)) |
+      (gnomad41_exome_AF_eas <= gnomad_GME_param | is.na(gnomad41_exome_AF_eas)) |
+      (gnomad41_exome_AF_fin <= gnomad_GME_param | is.na(gnomad41_exome_AF_fin)) |
+      (gnomad41_exome_AF_mid <= gnomad_GME_param | is.na(gnomad41_exome_AF_mid)) |
+      (gnomad41_exome_AF_nfe <= gnomad_GME_param | is.na(gnomad41_exome_AF_nfe)) |
+      (gnomad41_exome_AF_remaining <= gnomad_GME_param | is.na(gnomad41_exome_AF_remaining)) |
+      (gnomad41_exome_AF_sas <= gnomad_GME_param | is.na(gnomad41_exome_AF_sas)) |
+      (GME_NWA <= gnomad_GME_param | is.na(GME_NWA)) |
+      (GME_NEA <= gnomad_GME_param | is.na(GME_NEA)) |
+      (GME_AP <= gnomad_GME_param | is.na(GME_AP)) |
+      (GME_Israel <= gnomad_GME_param | is.na(GME_Israel)) |
+      (GME_SD <= gnomad_GME_param | is.na(GME_SD)) |
+      (GME_TP <= gnomad_GME_param | is.na(GME_TP)) |
+      (GME_CA <= gnomad_GME_param | is.na(GME_CA))
     ) %>%
     filter(Gene.refGene %in% sample_genelist)  # Subset based on 'Gene.refGene'
+  
+  # Convert NA values back to "." for consistency with original ANNOVAR format
+  filtered_variants <- filtered_variants %>%
+    mutate(across(starts_with("gnomad41_exome_AF_"), ~ ifelse(is.na(.), ".", as.character(.)))) %>%
+    mutate(across(starts_with("GME_"), ~ ifelse(is.na(.), ".", as.character(.))))
+  
+  
+  filtered_variants <- filtered_variants %>%
+    mutate(sample_id = sample_id, phenotype = phenotype)
 
   return(filtered_variants)
 }
+
+
 
 ```
 
@@ -743,12 +302,111 @@ process_annovar_results <- function(annovar_output, sample_id, data_dict, gene_l
 
 
 ```{r}
-# Process a sample dynamically using the correct gene list
-sample_id <- 121  # Example sample
+sample_id <- 100  # Example sample
+
+# Retrieve the file path for the sample
+file_path <- first_part_data_dict %>% 
+  filter(id == sample_id) %>% 
+  pull(file_path)
+
+# Read the ANNOVAR results file
+annovar_output <- read_tsv(file_path)
+
+# Process the ANNOVAR results
 filtered_results <- process_annovar_results(annovar_output, sample_id, first_part_data_dict, gene_lists)
+
+# View the filtered results
+print(filtered_results)
+```
+
+Chr Post Ref Alt 1/1 and 0/1
+
+# Hearing Loss 121
+
+```{r}
+# Define the output file path
+output_path <- "/Users/cojulian/Desktop/Tzu_projects/Regie/cleaningup_regie/running_annovar_hg38/final_filtering_Feb_9/100_microtia_allinfo.csv"
+
+# Save the filtered variants to CSV
+write.csv(filtered_results, output_path, row.names = FALSE)
+```
+
+### Trying for fst all
+
+```{r}
+library(data.table)
+library(fst)
+library(dplyr)
+
+# Load gene lists into a named list
+gene_lists <- list(
+  "Hearing_loss_gl" = read_csv("Otoscope_v9_072924_with_header.csv") %>% dplyr::select(Gene),
+  "EATEF_gl" = readxl::read_excel("EATEF_genelist.xlsx") %>% dplyr::select(Gene),
+  "Microtia_gl" = readxl::read_excel("Microtia_genelist.xlsx") %>% dplyr::select(Gene)
+)
+
+# Function to process a single sample and return the results
+process_sample <- function(file_path, sample_id, first_part_data_dict, gene_lists) {
+    # Load the .fst file
+    annovar_output <- read_fst(file_path)
+    
+    # Process the sample using your existing function
+    results <- process_annovar_results(annovar_output, sample_id, first_part_data_dict, gene_lists)
+    
+    return(results)
+}
+
+# Process all samples and stack the results
+all_results <- lapply(1:nrow(first_part_data_dict), function(i) {
+    file_path <- first_part_data_dict$file_path[i]
+    sample_id <- first_part_data_dict$id[i]
+    process_sample(file_path, sample_id, first_part_data_dict, gene_lists)
+}) %>%
+    bind_rows()  # Stack all results into a single data frame
+
+# View the final stacked results
+print(all_results)
 ```
 
 
+### Doing it .txt
+
+```{r}
+library(data.table)
+library(dplyr)
+library(readr)
+
+# Initialize an empty data frame to store the combined results
+all_results <- data.frame()
+
+# Loop through each sample in first_part_data_dict
+for (i in 1:nrow(first_part_data_dict)) {
+    # Get the file path and sample ID
+    file_path <- first_part_data_dict$file_path[i]
+    sample_id <- first_part_data_dict$id[i]
+    
+    # Print progress
+    cat("Processing sample", sample_id, "(", i, "of", nrow(first_part_data_dict), ")...\n")
+    
+    # Read the ANNOVAR results file
+    annovar_output <- read_tsv(file_path)
+    
+    # Process the ANNOVAR results
+    filtered_results <- process_annovar_results(annovar_output, sample_id, first_part_data_dict, gene_lists)
+    
+    # Append the results to the combined data frame
+    all_results <- bind_rows(all_results, filtered_results)
+    
+    # Print completion message
+    cat("Sample", sample_id, "processed. Total variants so far:", nrow(all_results), "\n")
+}
+
+# View the final stacked results
+print(all_results)
+```
 
 
+```{r}
+write.csv(all_results, "/Users/cojulian/Desktop/Tzu_projects/Regie/cleaningup_regie/running_annovar_hg38/final_filtering_all_concatenated_Feb_13/concatenated_firstbatch.csv")
+```
 

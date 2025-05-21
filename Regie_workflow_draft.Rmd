@@ -7,11 +7,7 @@ library(dplyr)
 })
 ```
 
-## Exploring the gene list
-
-
-
-# Exploring the annovar output:
+# Exploring the annovar output and testing all for one sample only:
 
 ```{r}
 annovar_output <- read_delim("/Volumes/Extreme_SSD/Regie/annovar_keepingallcols_afterloftee_results/100.hg38_multianno.txt")
@@ -111,16 +107,28 @@ write.csv(filtered_results, output_path, row.names = FALSE)
 ## Loading Gene Lists:
 
 ```{r}
-Hearing_loss_gl <- read_csv("Otoscope_v9_072924_with_header.csv")
+Hearing_loss_gl <- read_csv("running_annovar_hg38/final_filtering_all_concatenated_Feb_13/updated_gene_lists/Otoscope_v9_072924.csv") %>% dplyr::select(Gene)
 
-EATEF_gl <- readxl::read_excel("EATEF_genelist.xlsx")
+EATEF_gl <- read_csv("running_annovar_hg38/final_filtering_all_concatenated_Feb_13/updated_gene_lists/Updated_EA_TEF_GeneList.csv") %>% dplyr::select(Gene)
 
-Microtia_gl <- readxl::read_excel("Microtia_genelist.xlsx")
+Microtia_gl <- read_csv("running_annovar_hg38/final_filtering_all_concatenated_Feb_13/updated_gene_lists/Updated_MicrotiaGeneList.csv") %>% dplyr::select(Gene)
 # Remember about special characters like RARα	| RARβ
 ```
 
 
-Creating Data Dictionary
+## Loading Gene lists
+
+```{r}
+# Load gene lists into a named list
+gene_lists <- list(
+  "Hearing_loss_gl" = read_csv("running_annovar_hg38/final_filtering_all_concatenated_Feb_13/updated_gene_lists/Otoscope_v9_072924.csv") %>% dplyr::select(Gene),
+  "EATEF_gl" = read_csv("running_annovar_hg38/final_filtering_all_concatenated_Feb_13/updated_gene_lists/Updated_EA_TEF_GeneList.csv") %>% dplyr::select(Gene),
+  "Microtia_gl" = read_csv("running_annovar_hg38/final_filtering_all_concatenated_Feb_13/updated_gene_lists/Updated_MicrotiaGeneList.csv") %>% dplyr::select(Gene)
+)
+```
+
+
+# Creating Data Dictionary
 
 ```{r}
 first_part_data_dict <- data.frame(
@@ -149,7 +157,7 @@ first_part_data_dict <- data.frame(
                         )
 
 # Define the base directory where the files are located
-base_dir <- "/Volumes/Extreme_SSD/Regie/annovar_keepingallcols_afterloftee_results/"
+base_dir <- "/Volumes/Extreme_SSD/Regie/annovar_keepingallcols_txt_only/"
 
 # Add a new column with the full file paths
 first_part_data_dict$file_path <- paste0(base_dir, first_part_data_dict$id, ".hg38_multianno.txt")
@@ -167,65 +175,75 @@ first_part_data_dict <- first_part_data_dict %>%
     ))
 ```
 
-## Converting to fst
-
-```{r}
-library(data.table)
-library(fst)
-library(parallel)
-library(foreach)
-library(doParallel)
-
-# Set up parallel processing
-num_cores <- detectCores() - 1  # Use all but one core
-cl <- makeCluster(num_cores)
-registerDoParallel(cl)
-
-# List of file paths to process
-file_paths <- first_part_data_dict$file_path
-
-# Function to convert a single file to .fst format
-convert_to_fst <- function(file_path) {
-    # Load the .txt file using fread
-    annovar_output <- fread(file_path, sep = "\t")
-    
-    # Define the output .fst file path
-    fst_file_path <- gsub("\\.txt$", ".fst", file_path)
-    
-    # Save the file in .fst format
-    write_fst(annovar_output, fst_file_path)
-    
-    # Return the path of the saved .fst file
-    return(fst_file_path)
-}
-
-# Process files in parallel
-fst_file_paths <- foreach(file_path = file_paths, .packages = c("data.table", "fst")) %dopar% {
-    convert_to_fst(file_path)
-}
-
-# Stop the parallel cluster
-stopCluster(cl)
-
-# Print the paths of the saved .fst files
-print(fst_file_paths)
-```
-
 
 
 # Function for testing one
 
-## Loading Gene lists
+
+
+---
+
+# Checking gene name discrepancies
 
 ```{r}
-# Load gene lists into a named list
-gene_lists <- list(
-  "Hearing_loss_gl" = read_csv("Otoscope_v9_072924_with_header.csv") %>% dplyr::select(Gene),
-  "EATEF_gl" = readxl::read_excel("EATEF_genelist.xlsx") %>% dplyr::select(Gene),
-  "Microtia_gl" = readxl::read_excel("Microtia_genelist.xlsx") %>% dplyr::select(Gene)
-)
+file_path <- "/Volumes/Extreme_SSD/Regie/annovar_keepingallcols_txt_only/121.hg38_multianno.txt"
+data <- read_tsv(file_path)
+
+hearing_loss_present <- gene_lists$Hearing_loss_gl$Gene %in% data$Gene.refGene
+eatef_present <- gene_lists$EATEF_gl$Gene %in% data$Gene.refGene
+microtia_present <- gene_lists$Microtia_gl$Gene %in% data$Gene.refGene
+
+hearing_loss_missing <- gene_lists$Hearing_loss_gl$Gene[!hearing_loss_present]
+eatef_missing <- gene_lists$EATEF_gl$Gene[!eatef_present]
+microtia_missing <- gene_lists$Microtia_gl$Gene[!microtia_present]
+
+if (all(hearing_loss_present)) {
+    cat("All Hearing loss genes are present.\n")
+} else {
+    cat("Missing Hearing loss genes:\n")
+    print(hearing_loss_missing)
+}
+
+if (all(eatef_present)) {
+    cat("All EATEF genes are present.\n")
+} else {
+    cat("Missing EATEF genes:\n")
+    print(eatef_missing)
+}
+
+if (all(microtia_present)) {
+    cat("All Microtia genes are present.\n")
+} else {
+    cat("Missing Microtia genes:\n")
+    print(microtia_missing)
+}
 ```
 
+
+
+```{r}
+
+# Foxp1, Foxp2, HoxC4, Keap1
+
+
+data %>% 
+    filter(str_detect(Gene.refGene, "CXCL8")) %>% 
+    arrange(Gene.refGene) %>% 
+    pull(Gene.refGene) %>% 
+    unique()
+```
+
+```{r}
+# Extra stuff
+
+gene_lists$Hearing_loss_gl %>% 
+    filter(str_detect(Gene, "GJ")) %>% 
+    pull(Gene)
+```
+
+
+
+---
 
 ```{r}
 process_annovar_results <- function(annovar_output, sample_id, data_dict, gene_lists) {
@@ -279,8 +297,11 @@ process_annovar_results <- function(annovar_output, sample_id, data_dict, gene_l
       (GME_TP <= gnomad_GME_param | is.na(GME_TP)) |
       (GME_CA <= gnomad_GME_param | is.na(GME_CA))
     ) %>%
-    filter(Gene.refGene %in% sample_genelist)  # Subset based on 'Gene.refGene'
+    filter(Gene.refGene %in% sample_genelist) %>% 
+    filter(!str_starts(Otherinfo13, "0/0"))  # Remove rows where Otherinfo13 starts with "0/0"# Subset based on 'Gene.refGene'
   
+
+
   # Convert NA values back to "." for consistency with original ANNOVAR format
   filtered_variants <- filtered_variants %>%
     mutate(across(starts_with("gnomad41_exome_AF_"), ~ ifelse(is.na(.), ".", as.character(.)))) %>%
@@ -300,7 +321,6 @@ process_annovar_results <- function(annovar_output, sample_id, data_dict, gene_l
 
 ## Running for one sample
 
-
 ```{r}
 sample_id <- 100  # Example sample
 
@@ -318,9 +338,6 @@ filtered_results <- process_annovar_results(annovar_output, sample_id, first_par
 # View the filtered results
 print(filtered_results)
 ```
-
-Chr Post Ref Alt 1/1 and 0/1
-
 # Hearing Loss 121
 
 ```{r}
@@ -328,54 +345,14 @@ Chr Post Ref Alt 1/1 and 0/1
 output_path <- "/Users/cojulian/Desktop/Tzu_projects/Regie/cleaningup_regie/running_annovar_hg38/final_filtering_Feb_9/100_microtia_allinfo.csv"
 
 # Save the filtered variants to CSV
-write.csv(filtered_results, output_path, row.names = FALSE)
+#write.csv(filtered_results, output_path, row.names = FALSE)
 ```
-
-### Trying for fst all
-
-```{r}
-library(data.table)
-library(fst)
-library(dplyr)
-
-# Load gene lists into a named list
-gene_lists <- list(
-  "Hearing_loss_gl" = read_csv("Otoscope_v9_072924_with_header.csv") %>% dplyr::select(Gene),
-  "EATEF_gl" = readxl::read_excel("EATEF_genelist.xlsx") %>% dplyr::select(Gene),
-  "Microtia_gl" = readxl::read_excel("Microtia_genelist.xlsx") %>% dplyr::select(Gene)
-)
-
-# Function to process a single sample and return the results
-process_sample <- function(file_path, sample_id, first_part_data_dict, gene_lists) {
-    # Load the .fst file
-    annovar_output <- read_fst(file_path)
-    
-    # Process the sample using your existing function
-    results <- process_annovar_results(annovar_output, sample_id, first_part_data_dict, gene_lists)
-    
-    return(results)
-}
-
-# Process all samples and stack the results
-all_results <- lapply(1:nrow(first_part_data_dict), function(i) {
-    file_path <- first_part_data_dict$file_path[i]
-    sample_id <- first_part_data_dict$id[i]
-    process_sample(file_path, sample_id, first_part_data_dict, gene_lists)
-}) %>%
-    bind_rows()  # Stack all results into a single data frame
-
-# View the final stacked results
-print(all_results)
-```
-
 
 ### Doing it .txt
 
-```{r}
-library(data.table)
-library(dplyr)
-library(readr)
+# TRY DATA.TABLE OR DUCKDB
 
+```{r}
 # Initialize an empty data frame to store the combined results
 all_results <- data.frame()
 
@@ -407,6 +384,898 @@ print(all_results)
 
 
 ```{r}
-write.csv(all_results, "/Users/cojulian/Desktop/Tzu_projects/Regie/cleaningup_regie/running_annovar_hg38/final_filtering_all_concatenated_Feb_13/concatenated_firstbatch.csv")
+#write.csv(all_results, "/Users/cojulian/Desktop/Tzu_projects/Regie/cleaningup_regie/running_annovar_hg38/final_filtering_all_concatenated_Feb_13/concatenated_firstbatch.csv")
+```
+
+
+# Using duckdb, one per phenotype
+
+## Microtia
+
+
+### TRY USING DUCKPLYR
+```{r}
+pacman::p_load(duckdb, arrow, dbplyr)
+
+# Filter the data dictionary for Microtia samples
+microtia_samples <- first_part_data_dict %>% filter(phenotype == "Microtia")
+
+# Create a DuckDB connection
+con <- dbConnect(duckdb::duckdb(), dbdir = "my_database.duckdb")
+
+# Initialize an empty data frame to store the combined results
+all_results <- data.frame()
+
+# Loop through each Microtia sample and process one by one
+for (i in 1:nrow(microtia_samples)) {
+    sample_id <- microtia_samples$id[i]
+    file_path <- microtia_samples$file_path[i]
+    
+    # Print progress
+    cat("Loading and processing sample", sample_id, "(", i, "of", nrow(microtia_samples), ")...\n")
+    
+    # Load the TSV file into DuckDB
+    dbExecute(con, paste0("CREATE TABLE sample_", sample_id, " AS SELECT * FROM read_csv_auto('", file_path, "', delim = '\t')"))
+    
+    # Query the data from DuckDB
+    annovar_output <- dbGetQuery(con, paste0("SELECT * FROM sample_", sample_id))
+    
+    # Process the ANNOVAR results
+    filtered_results <- process_annovar_results(annovar_output, sample_id, first_part_data_dict, gene_lists)
+    
+    # Append the results to the combined data frame
+    all_results <- bind_rows(all_results, filtered_results)
+    
+    # Drop the table to free up space
+    dbExecute(con, paste0("DROP TABLE sample_", sample_id))
+    
+    # Print completion message
+    cat("Sample", sample_id, "processed. Total variants so far:", nrow(all_results), "\n")
+}
+
+# Close the DuckDB connection
+dbDisconnect(con, shutdown = TRUE)
+
+# View the final stacked results
+print(all_results)
+```
+
+## EA-TEF
+
+```{r}
+pacman::p_load(duckdb, arrow, dbplyr)
+
+# Filter the data dictionary for EA-TEF samples
+eatef_samples <- first_part_data_dict %>% filter(phenotype == "EA-TEF")
+
+# Create a DuckDB connection
+con <- dbConnect(duckdb::duckdb(), dbdir = "my_database.duckdb")
+
+# Initialize an empty data frame to store the combined results
+all_results_EATEF <- data.frame()
+
+# Loop through each EA-TEF sample and process one by one
+for (i in 1:nrow(eatef_samples)) {
+    sample_id <- eatef_samples$id[i]
+    file_path <- eatef_samples$file_path[i]
+    
+    # Print progress
+    cat("Loading and processing sample", sample_id, "(", i, "of", nrow(eatef_samples), ")...\n")
+    
+    # Load the TSV file into DuckDB
+    dbExecute(con, paste0("CREATE TABLE sample_", sample_id, " AS SELECT * FROM read_csv_auto('", file_path, "', delim = '\t')"))
+    
+    # Query the data from DuckDB
+    annovar_output_EATEF <- dbGetQuery(con, paste0("SELECT * FROM sample_", sample_id))
+    
+    # Process the ANNOVAR results
+    filtered_results_EATEF <- process_annovar_results(annovar_output_EATEF, sample_id, first_part_data_dict, gene_lists)
+    
+    # Append the results to the combined data frame
+    all_results_EATEF <- bind_rows(all_results_EATEF, filtered_results_EATEF)
+    
+    # Drop the table to free up space
+    dbExecute(con, paste0("DROP TABLE sample_", sample_id))
+    
+    # Print completion message
+    cat("Sample", sample_id, "processed. Total variants so far:", nrow(all_results_EATEF), "\n")
+}
+
+# Close the DuckDB connection
+dbDisconnect(con, shutdown = TRUE)
+
+# View the final stacked results
+print(all_results_EATEF)
+```
+
+## Hearing Loss
+
+```{r}
+pacman::p_load(duckdb, arrow, dbplyr)
+
+# Filter the data dictionary for HearingLoss samples
+hearingloss_samples <- first_part_data_dict %>% filter(phenotype == "HearingLoss")
+
+# Create a DuckDB connection
+con <- dbConnect(duckdb::duckdb(), dbdir = "my_database.duckdb")
+
+# Initialize an empty data frame to store the combined results
+all_results_HearingLoss <- data.frame()
+
+# Loop through each HearingLoss sample and process one by one
+for (i in 1:nrow(hearingloss_samples)) {
+    sample_id <- hearingloss_samples$id[i]
+    file_path <- hearingloss_samples$file_path[i]
+    
+    # Print progress
+    cat("Loading and processing sample", sample_id, "(", i, "of", nrow(hearingloss_samples), ")...\n")
+    
+    # Load the TSV file into DuckDB
+    dbExecute(con, paste0("CREATE TABLE sample_", sample_id, " AS SELECT * FROM read_csv_auto('", file_path, "', delim = '\t')"))
+    
+    # Query the data from DuckDB
+    annovar_output_HearingLoss <- dbGetQuery(con, paste0("SELECT * FROM sample_", sample_id))
+    
+    # Process the ANNOVAR results
+    filtered_results_HearingLoss <- process_annovar_results(annovar_output_HearingLoss, sample_id, first_part_data_dict, gene_lists)
+    
+    # Append the results to the combined data frame
+    all_results_HearingLoss <- bind_rows(all_results_HearingLoss, filtered_results_HearingLoss)
+    
+    # Drop the table to free up space
+    dbExecute(con, paste0("DROP TABLE sample_", sample_id))
+    
+    # Print completion message
+    cat("Sample", sample_id, "processed. Total variants so far:", nrow(all_results_HearingLoss), "\n")
+}
+
+# Close the DuckDB connection
+dbDisconnect(con, shutdown = TRUE)
+
+# View the final stacked results
+print(all_results_HearingLoss)
+```
+
+## Saving this
+
+```{r}
+write.csv(all_results, "/Users/cojulian/Desktop/Tzu_projects/Regie/cleaningup_regie/running_annovar_hg38/final_filtering_all_concatenated_Feb_13/3_csv_output_Apr_2/all_results_Microtia.csv", row.names = FALSE)
+write.csv(all_results_EATEF, "/Users/cojulian/Desktop/Tzu_projects/Regie/cleaningup_regie/running_annovar_hg38/final_filtering_all_concatenated_Feb_13/3_csv_output_Apr_2/all_results_EATEF.csv", row.names = FALSE)
+write.csv(all_results_HearingLoss, "/Users/cojulian/Desktop/Tzu_projects/Regie/cleaningup_regie/running_annovar_hg38/final_filtering_all_concatenated_Feb_13/3_csv_output_Apr_2/all_results_HearingLoss.csv", row.names = FALSE)
+
+```
+
+
+
+
+
+
+
+---
+
+
+## Loading first batch
+
+```{r}
+first_batch <- read.csv("/Users/cojulian/Desktop/Tzu_projects/Regie/cleaningup_regie/running_annovar_hg38/final_filtering_all_concatenated_Feb_13/concatenated_firstbatch.csv") %>% 
+  select(-X)
+```
+
+
+## Loading example VCF
+
+```{r}
+vcf_98 <- vcfR::read.vcfR("/Users/cojulian/Desktop/Tzu_projects/Regie/cleaningup_regie/running_annovar_hg38/final_filtering_all_concatenated_Feb_13/98.freebayes_VEP.ann.vcf")
+
+vcf_98_tidy <- vcfR::vcfR2tidy(vcf_98)
+```
+
+## Subsetting the VCF
+
+```{r}
+# 1. Filter variants for sample_id == 98
+variants_98 <- first_batch %>%
+  filter(sample_id == 98) %>%
+  select(Chr, Start, Ref, Alt) %>%
+  mutate(Chr = as.character(Chr))  # Ensure types match with VCF
+
+# 2. Prepare VCF fix data
+vcf_fix <- vcf_98_tidy$fix %>%
+  rename(Chr = CHROM, Start = POS, Ref = REF, Alt = ALT) %>%
+  dplyr::mutate(Chr = as.character(Chr),
+                Start = as.integer(Start)) %>% 
+  select(-ID)
+
+
+# 3. Inner join to get matching variants
+vcf_filtered <- inner_join(vcf_fix, variants_98, by = c("Chr", "Start", "Ref", "Alt"))
+
+# 4. Check dimensions or preview
+dim(vcf_filtered)
+head(vcf_filtered)
+
+```
+
+## Bash output analysis
+
+```{r}
+bash_98_subset_vcf <- read.vcfR("running_annovar_hg38/final_filtering_all_concatenated_Feb_13/final_subset_sample98.vcf")
+
+```
+
+
+
+## Helens
+
+```{r}
+Helens <- readxl::read_xlsx("../HL Variant List.xlsx", sheet = 1) 
+```
+
+```{r}
+# Find Helens in first_batch by gene names
+helens_genenames_in_first_batch <- first_batch[first_batch$Gene.refGene %in% Helens$Gene.refGene, ]
+
+# Display the result
+print(helens_genenames_in_first_batch)
+```
+
+```{r}
+columns_to_subset <- c("Chr", "Start", "End", "Ref", "Alt", "Func.refGene", "Gene.refGene")
+
+# Subset the rows in first_batch based on the columns in Helens
+subset_first_batch <- helens_genenames_in_first_batch[, columns_to_subset]
+
+# Display the result
+print(subset_first_batch)
+```
+
+```{r}
+library(dplyr)
+
+# Step 1: Subset first_batch by Gene Names in Helens
+first_batch_gene_subset <- first_batch %>%
+  filter(Gene.refGene %in% Helens$Gene.refGene)
+
+# Step 2: Further subset based on Func.refGene values
+first_batch_gene_subset <- first_batch_gene_subset %>%
+  filter(Func.refGene %in% c("exonic", "splicing"))
+
+# Step 3: Further subset based on GeneDetail.refGene values
+first_batch_gene_subset <- first_batch_gene_subset %>%
+  filter(GeneDetail.refGene %in% c(".", "NM_022124:exon40:c.5369-1G>C"))
+
+# Step 4: Further subset based on ExonicFunc.refGene values
+first_batch_gene_subset <- first_batch_gene_subset %>%
+  filter(ExonicFunc.refGene %in% c("nonsynonymous SNV", ".", "stopgain"))
+
+# Step 5: Check final dimensions and preview data
+dim(first_batch_gene_subset)  # Should return >0 rows
+head(first_batch_gene_subset)  # Preview filtered data
+
+```
+## More subsetting
+
+```{r}
+# Step 6: Further subset based on gnomad41_exome_faf99 values
+first_batch_gene_subset <- first_batch_gene_subset %>%
+  filter(gnomad41_exome_faf99 %in% c("0", ".", "2.05e-06", "3.61e-06", "3.94e-06", "9e-08", "1E-3"))
+
+# Step 7: Further subset based on gnomad41_exome_faf95 values
+first_batch_gene_subset <- first_batch_gene_subset %>%
+  filter(gnomad41_exome_faf95 %in% c("0", ".", "3.19e-06", "4.57e-06", "1E-3", "5.12e-06", "2.3e-07"))
+
+# Step 8: Check final dimensions and preview data
+dim(first_batch_gene_subset)  # Should return >0 rows
+head(first_batch_gene_subset)  # Preview filtered data
+
+```
+
+## More filtering
+```{r}
+# Step 8: Further subset based on gnomad41_exome_AF_afr values
+first_batch_gene_subset <- first_batch_gene_subset %>%
+  filter(gnomad41_exome_AF_afr %in% c("0", ".", "1e-04"))
+
+# Step 9: Further subset based on gnomad41_exome_AF_asj values
+first_batch_gene_subset <- first_batch_gene_subset %>%
+  filter(gnomad41_exome_AF_asj %in% c("0", ".", "7e-04"))
+
+# Step 10: Further subset based on gnomad41_exome_AF_amr values
+first_batch_gene_subset <- first_batch_gene_subset %>%
+  filter(gnomad41_exome_AF_amr %in% c("0", ".", "1e-04"))
+
+# Step 11: Further subset based on gnomad41_exome_AF_fin values
+first_batch_gene_subset <- first_batch_gene_subset %>%
+  filter(gnomad41_exome_AF_fin %in% c("0", ".", "2.7000000000000001E-3"))
+
+# Step 12: Further subset based on gnomad41_exome_AF_eas values
+first_batch_gene_subset <- first_batch_gene_subset %>%
+  filter(gnomad41_exome_AF_eas %in% c("0", ".", "2.798e-05", "2.519e-05"))
+
+# Step 13: Further subset based on gnomad41_exome_AF_mid values
+first_batch_gene_subset <- first_batch_gene_subset %>%
+  filter(gnomad41_exome_AF_mid %in% c("0", ".", "5e-04"))
+
+# Step 14: Check final dimensions and preview data
+dim(first_batch_gene_subset)  # Should return >0 rows
+head(first_batch_gene_subset)  # Preview filtered data
+
+```
+
+
+```{r}
+# Function to standardize numeric values (convert scientific notation to decimal)
+convert_numeric <- function(x) {
+  ifelse(x == ".", ".", format(as.numeric(x), scientific = FALSE, trim = TRUE))
+}
+
+# Standardize Helens allele frequency columns
+Helens$GME_AF <- convert_numeric(Helens$GME_AF)
+Helens$gnomad41_exome_AF_sas <- convert_numeric(Helens$gnomad41_exome_AF_sas)
+Helens$GME_NWA <- convert_numeric(Helens$GME_NWA)
+Helens$GME_NEA <- convert_numeric(Helens$GME_NEA)
+Helens$GME_AP <- convert_numeric(Helens$GME_AP)
+Helens$SIFT4G_score <- convert_numeric(Helens$SIFT4G_score)
+Helens$SIFT4G_converted_rankscore <- convert_numeric(Helens$SIFT4G_converted_rankscore)
+Helens$LRT_score <- convert_numeric(Helens$LRT_score)
+
+# Apply the same numeric standardization to first_batch_gene_subset
+first_batch_gene_subset$GME_AF <- convert_numeric(first_batch_gene_subset$GME_AF)
+first_batch_gene_subset$gnomad41_exome_AF_sas <- convert_numeric(first_batch_gene_subset$gnomad41_exome_AF_sas)
+first_batch_gene_subset$GME_NWA <- convert_numeric(first_batch_gene_subset$GME_NWA)
+first_batch_gene_subset$GME_NEA <- convert_numeric(first_batch_gene_subset$GME_NEA)
+first_batch_gene_subset$GME_AP <- convert_numeric(first_batch_gene_subset$GME_AP)
+first_batch_gene_subset$SIFT4G_score <- convert_numeric(first_batch_gene_subset$SIFT4G_score)
+first_batch_gene_subset$SIFT4G_converted_rankscore <- convert_numeric(first_batch_gene_subset$SIFT4G_converted_rankscore)
+first_batch_gene_subset$LRT_score <- convert_numeric(first_batch_gene_subset$LRT_score)
+
+# Step 15: Filter based on standardized GME_AF values
+first_batch_gene_subset <- first_batch_gene_subset %>%
+  filter(GME_AF %in% unique(Helens$GME_AF))
+
+# Step 16: Filter based on standardized GME_NWA values
+first_batch_gene_subset <- first_batch_gene_subset %>%
+  filter(GME_NWA %in% unique(Helens$GME_NWA))
+
+# Step 17: Filter based on standardized GME_NEA values
+first_batch_gene_subset <- first_batch_gene_subset %>%
+  filter(GME_NEA %in% unique(Helens$GME_NEA))
+
+# Step 18: Filter based on standardized GME_AP values
+first_batch_gene_subset <- first_batch_gene_subset %>%
+  filter(GME_AP %in% unique(Helens$GME_AP))
+
+# Step 19: Filter based on standardized gnomad41_exome_AF_sas values
+first_batch_gene_subset <- first_batch_gene_subset %>%
+  filter(gnomad41_exome_AF_sas %in% unique(Helens$gnomad41_exome_AF_sas))
+
+# Step 20: Filter based on standardized SIFT4G_score values
+first_batch_gene_subset <- first_batch_gene_subset %>%
+  filter(SIFT4G_score %in% unique(Helens$SIFT4G_score))
+
+# Step 21: Filter based on standardized SIFT4G_converted_rankscore values
+first_batch_gene_subset <- first_batch_gene_subset %>%
+  filter(SIFT4G_converted_rankscore %in% unique(Helens$SIFT4G_converted_rankscore))
+
+# Step 22: Filter based on standardized LRT_score values
+first_batch_gene_subset <- first_batch_gene_subset %>%
+  filter(LRT_score %in% unique(Helens$LRT_score))
+
+# Step 23: Check results
+dim(first_batch_gene_subset)
+head(first_batch_gene_subset)
+
+```
+
+
+
+# More columsn
+
+```{r}
+library(dplyr)
+library(stringr)
+library(readr)
+
+# Function to standardize numeric values (convert scientific notation to decimal)
+convert_numeric <- function(x) {
+  ifelse(x == ".", ".", format(as.numeric(x), scientific = FALSE, trim = TRUE))
+}
+
+# Standardize Helens allele frequency columns
+numeric_cols <- c("GME_AF", "gnomad41_exome_AF_sas", "GME_NWA", "GME_NEA", "GME_AP",
+                  "SIFT4G_score", "SIFT4G_converted_rankscore", "LRT_score",
+                  "gnomad41_exome_faf99", "gnomad41_exome_faf95",
+                  "gnomad41_exome_AF_afr", "gnomad41_exome_AF_asj",
+                  "gnomad41_exome_AF_amr", "gnomad41_exome_AF_fin",
+                  "gnomad41_exome_AF_eas", "gnomad41_exome_AF_mid")
+
+for (col in numeric_cols) {
+  Helens[[col]] <- convert_numeric(Helens[[col]])
+}
+
+# Apply the same numeric standardization to first_batch_gene_subset
+for (col in numeric_cols) {
+  first_batch[[col]] <- convert_numeric(first_batch[[col]])
+}
+
+# Step 1: Subset first_batch by Gene Names in Helens
+first_batch_gene_subset <- first_batch %>%
+  filter(Gene.refGene %in% Helens$Gene.refGene)
+
+# Step 2: Further subset based on Func.refGene values
+first_batch_gene_subset <- first_batch_gene_subset %>%
+  filter(Func.refGene %in% c("exonic", "splicing"))
+
+# Step 3: Further subset based on GeneDetail.refGene values
+first_batch_gene_subset <- first_batch_gene_subset %>%
+  filter(GeneDetail.refGene %in% c(".", "NM_022124:exon40:c.5369-1G>C"))
+
+# Step 4: Further subset based on ExonicFunc.refGene values
+first_batch_gene_subset <- first_batch_gene_subset %>%
+  filter(ExonicFunc.refGene %in% c("nonsynonymous SNV", ".", "stopgain"))
+
+# Step 5: Further subset based on gnomad41_exome_faf99 values
+first_batch_gene_subset <- first_batch_gene_subset %>%
+  filter(gnomad41_exome_faf99 %in% unique(Helens$gnomad41_exome_faf99))
+
+# Step 6: Further subset based on gnomad41_exome_faf95 values
+first_batch_gene_subset <- first_batch_gene_subset %>%
+  filter(gnomad41_exome_faf95 %in% unique(Helens$gnomad41_exome_faf95))
+
+# Step 7: Further subset based on gnomad41_exome_AF_afr values
+first_batch_gene_subset <- first_batch_gene_subset %>%
+  filter(gnomad41_exome_AF_afr %in% unique(Helens$gnomad41_exome_AF_afr))
+
+# Step 8: Further subset based on gnomad41_exome_AF_asj values
+first_batch_gene_subset <- first_batch_gene_subset %>%
+  filter(gnomad41_exome_AF_asj %in% unique(Helens$gnomad41_exome_AF_asj))
+
+# Step 9: Further subset based on gnomad41_exome_AF_amr values
+first_batch_gene_subset <- first_batch_gene_subset %>%
+  filter(gnomad41_exome_AF_amr %in% unique(Helens$gnomad41_exome_AF_amr))
+
+# Step 10: Further subset based on gnomad41_exome_AF_fin values
+first_batch_gene_subset <- first_batch_gene_subset %>%
+  filter(gnomad41_exome_AF_fin %in% unique(Helens$gnomad41_exome_AF_fin))
+
+# Step 11: Further subset based on gnomad41_exome_AF_eas values
+first_batch_gene_subset <- first_batch_gene_subset %>%
+  filter(gnomad41_exome_AF_eas %in% unique(Helens$gnomad41_exome_AF_eas))
+
+# Step 12: Further subset based on gnomad41_exome_AF_mid values
+first_batch_gene_subset <- first_batch_gene_subset %>%
+  filter(gnomad41_exome_AF_mid %in% unique(Helens$gnomad41_exome_AF_mid))
+
+# Step 13: Further subset based on GME_AF values
+first_batch_gene_subset <- first_batch_gene_subset %>%
+  filter(GME_AF %in% unique(Helens$GME_AF))
+
+# Step 14: Further subset based on GME_NWA values
+first_batch_gene_subset <- first_batch_gene_subset %>%
+  filter(GME_NWA %in% unique(Helens$GME_NWA))
+
+# Step 15: Further subset based on GME_NEA values
+first_batch_gene_subset <- first_batch_gene_subset %>%
+  filter(GME_NEA %in% unique(Helens$GME_NEA))
+
+# Step 16: Further subset based on GME_AP values
+first_batch_gene_subset <- first_batch_gene_subset %>%
+  filter(GME_AP %in% unique(Helens$GME_AP))
+
+# Step 17: Further subset based on gnomad41_exome_AF_sas values
+first_batch_gene_subset <- first_batch_gene_subset %>%
+  filter(gnomad41_exome_AF_sas %in% unique(Helens$gnomad41_exome_AF_sas))
+
+# Step 18: Further subset based on SIFT4G_score values
+first_batch_gene_subset <- first_batch_gene_subset %>%
+  filter(SIFT4G_score %in% unique(Helens$SIFT4G_score))
+
+# Step 19: Further subset based on SIFT4G_converted_rankscore values
+first_batch_gene_subset <- first_batch_gene_subset %>%
+  filter(SIFT4G_converted_rankscore %in% unique(Helens$SIFT4G_converted_rankscore))
+
+# Step 20: Further subset based on LRT_score values
+first_batch_gene_subset <- first_batch_gene_subset %>%
+  filter(LRT_score %in% unique(Helens$LRT_score))
+
+# Step 21: Check final dimensions and preview data
+dim(first_batch_gene_subset)  # Should return >0 rows
+head(first_batch_gene_subset)  # Preview filtered data
+
+```
+
+
+
+# Rowise:
+
+```{r}
+library(dplyr)
+
+# Function to convert numeric values properly (handles scientific notation and missing values)
+convert_numeric <- function(x) {
+  suppressWarnings(ifelse(x == ".", NA, format(as.numeric(x), scientific = FALSE, trim = TRUE)))
+}
+
+# Ensure key matching columns are characters to avoid type mismatches
+first_batch <- first_batch %>%
+  mutate(
+    Chr = as.character(Chr),
+    Start = as.character(Start),
+    End = as.character(End),
+    Ref = as.character(Ref),
+    Alt = as.character(Alt),
+    Gene.refGene = as.character(Gene.refGene),
+    SIFT_score = convert_numeric(SIFT_score),
+    MutationTaster_converted_rankscore = convert_numeric(MutationTaster_converted_rankscore)
+  )
+
+Helens <- Helens %>%
+  mutate(
+    Chr = as.character(Chr),
+    Start = as.character(Start),
+    End = as.character(End),
+    Ref = as.character(Ref),
+    Alt = as.character(Alt),
+    Gene.refGene = as.character(Gene.refGene),
+    SIFT_score = convert_numeric(SIFT_score),
+    MutationTaster_converted_rankscore = convert_numeric(MutationTaster_converted_rankscore)
+  )
+
+# Step 1: Initialize an empty data frame to store matched rows
+first_batch_matched <- data.frame()
+
+# Step 2: Iterate over each row in Helens and match it in first_batch
+for (i in 1:nrow(Helens)) {
+  row_match <- first_batch %>%
+    filter(
+      Chr == Helens$Chr[i],
+      Start == Helens$Start[i],
+      End == Helens$End[i],
+      Ref == Helens$Ref[i],
+      Alt == Helens$Alt[i],
+      Gene.refGene == Helens$Gene.refGene[i],
+      (is.na(Helens$SIFT_score[i]) | SIFT_score == Helens$SIFT_score[i]),
+      (is.na(Helens$MutationTaster_converted_rankscore[i]) | 
+       MutationTaster_converted_rankscore == Helens$MutationTaster_converted_rankscore[i])
+    )
+
+  # If a match is found, bind it to the matched dataframe
+  if (nrow(row_match) > 0) {
+    first_batch_matched <- bind_rows(first_batch_matched, row_match)
+  }
+}
+
+# Step 3: Check final dimensions and preview results
+dim(first_batch_matched)  # Should match the number of rows in Helens
+head(first_batch_matched)  # Preview matched data
+
+
+write_csv(first_batch_matched, "HL_doublchecked_id_phenotype.csv",col_names = T)
+```
+
+
+## Kieras
+
+```{r}
+Kieras <- readxl::read_xlsx("../Kieras_32_EATEF.xlsx", sheet = 2) 
+```
+
+
+```{r}
+# Step 1: Identify common column names between first_batch and Kieras
+common_cols_kiera <- intersect(names(first_batch), names(Kieras))
+
+# Step 2: Exclude positional data like Start and End
+common_cols_kiera <- setdiff(common_cols_kiera, c("Start", "End"))
+
+# Step 3: Compare unique values in those shared columns
+unique_values_list_kiera <- lapply(common_cols_kiera, function(col) {
+  list(
+    column_name = col,
+    unique_first_batch = unique(first_batch[[col]]),
+    unique_Kieras = unique(Kieras[[col]])
+  )
+})
+
+# Step 4: Name each list item by its corresponding column name
+names(unique_values_list_kiera) <- common_cols_kiera
+
+# Step 5: Preview the first few comparisons
+print(unique_values_list_kiera[1:5])
+
+```
+
+
+```{r}
+library(dplyr)
+
+# Helper: standardize numeric values for comparison (handles scientific notation & rounding)
+standardize_values <- function(x) {
+  as.character(round(as.numeric(x), digits = 6))
+}
+
+# Standardize relevant numeric columns in both datasets
+first_batch_std <- first_batch %>%
+  mutate(
+    gnomad41_exome_AF = standardize_values(gnomad41_exome_AF),
+    gnomad41_exome_AF_raw = standardize_values(gnomad41_exome_AF_raw),
+    MutationTaster_score = standardize_values(MutationTaster_score),
+    SIFT_converted_rankscore = standardize_values(SIFT_converted_rankscore)
+  )
+
+Kieras_std <- Kieras %>%
+  mutate(
+    gnomad41_exome_AF = standardize_values(gnomad41_exome_AF),
+    gnomad41_exome_AF_raw = standardize_values(gnomad41_exome_AF_raw),
+    MutationTaster_score = standardize_values(MutationTaster_score),
+    SIFT_converted_rankscore = standardize_values(SIFT_converted_rankscore)
+  )
+
+# Filter first_batch to match Kieras patterns
+first_batch_matched_kieras <- first_batch_std %>%
+  filter(
+    Gene.refGene %in% Kieras_std$Gene.refGene,
+    Func.refGene == "exonic",
+    ExonicFunc.refGene %in% c("nonsynonymous SNV", "stopgain"),
+    gnomad41_exome_AF %in% Kieras_std$gnomad41_exome_AF,
+    gnomad41_exome_AF_raw %in% Kieras_std$gnomad41_exome_AF_raw,
+    MutationTaster_score %in% Kieras_std$MutationTaster_score,
+    SIFT_converted_rankscore %in% Kieras_std$SIFT_converted_rankscore
+  )
+
+```
+
+## Testikg Loop for Kiearas
+
+```{r}
+# --- Set base directory with annovar .txt files
+base_dir <- "/Volumes/Extreme_SSD/Regie/annovar_keepingallcols_txt_only/"
+
+# --- Use a subset of your data dictionary with just 2 rows for testing
+test_data_dict <- first_part_data_dict[1:2, ]
+
+# --- Create full file paths
+test_data_dict$file_path <- paste0(base_dir, test_data_dict$id, ".hg38_multianno.txt")
+
+# --- Create reference variant keys from Kieras (or Helens) dataframe
+reference_variants <- Kieras %>%
+  mutate(
+    variant_key = paste(Chr, Start, Ref, Alt, Gene.refGene, Func.refGene, ExonicFunc.refGene, sep = "_")
+  ) %>%
+  pull(variant_key)
+
+# --- Initialize empty results df
+matching_results_test <- data.frame()
+
+# --- Loop over the 2 test samples
+for (i in 1:nrow(test_data_dict)) {
+  sample_id <- test_data_dict$id[i]
+  phenotype <- test_data_dict$phenotype[i]
+  file_path <- test_data_dict$file_path[i]
+  
+  # Print progress
+  cat("Testing sample", sample_id, "(", i, "of", nrow(test_data_dict), ")...\n")
+  
+  # Read annovar file (as all character for safety)
+  annovar_data <- tryCatch(
+    readr::read_tsv(file_path, col_types = readr::cols(.default = "c")),
+    error = function(e) {
+      cat("Error reading", file_path, ":", e$message, "\n")
+      return(NULL)
+    }
+  )
+  
+  if (!is.null(annovar_data)) {
+    # Add variant key
+    annovar_data <- annovar_data %>%
+      mutate(
+        variant_key = paste(Chr, Start, Ref, Alt, Gene.refGene, Func.refGene, ExonicFunc.refGene, sep = "_")
+      )
+    
+    # Filter to keep only variants present in Kieras
+    matched_rows <- annovar_data %>%
+      filter(variant_key %in% reference_variants) %>%
+      mutate(sample_id = sample_id, phenotype = phenotype)
+    
+    # Bind to results
+    matching_results_test <- bind_rows(matching_results_test, matched_rows)
+  }
+}
+
+# --- Inspect resultwd
+dim(matching_results_test)
+head(matching_results_test %>% select(Chr, Start, Ref, Alt, Gene.refGene, sample_id, phenotype))
+names(matching_results_test)  # Should include all original columns
+
+```
+
+
+
+## Loop for Kieras
+
+```{r}
+# Load libraries
+library(tidyverse)
+library(readr)
+
+# Base directory of annovar .txt files
+base_dir <- "/Volumes/Extreme_SSD/Regie/annovar_keepingallcols_txt_only/"
+
+# Add full file paths to the data dictionary
+first_part_data_dict$file_path <- paste0(base_dir, first_part_data_dict$id, ".hg38_multianno.txt")
+
+# Define canonical variant keys from your reference file (e.g., Kieras or Helens)
+reference_variants <- Kieras %>% 
+  mutate(variant_key = paste(Chr, Start, Ref, Alt, Gene.refGene, Func.refGene, ExonicFunc.refGene, sep = "_")) %>%
+  pull(variant_key) %>% 
+  unique()
+
+# Initialize an empty tibble to store matching results
+all_matching_variants <- tibble()
+
+# Start looping
+for (i in seq_len(nrow(first_part_data_dict))) {
+  
+  sample_id <- first_part_data_dict$id[i]
+  phenotype <- first_part_data_dict$phenotype[i]
+  file_path <- first_part_data_dict$file_path[i]
+  
+  cat("🔄 Sample", sample_id, "(", i, "of", nrow(first_part_data_dict), ")...\n")
+  
+  if (!file.exists(file_path)) {
+    cat("⚠️ File not found:", file_path, "\n")
+    next
+  }
+
+  # Read the file with all columns (you need them)
+  annovar_data <- tryCatch(
+    read_tsv(file_path, col_types = cols(.default = "c")),
+    error = function(e) {
+      cat("❌ Error reading", file_path, ":", e$message, "\n")
+      return(NULL)
+    }
+  )
+  
+  if (is.null(annovar_data)) next
+  
+  # Add matching key
+  annovar_data <- annovar_data %>%
+    mutate(variant_key = paste(Chr, Start, Ref, Alt, Gene.refGene, Func.refGene, ExonicFunc.refGene, sep = "_"))
+  
+  # Filter for matching variants
+  matched <- annovar_data %>%
+    filter(variant_key %in% reference_variants) %>%
+    mutate(sample_id = sample_id, phenotype = phenotype)
+
+  # Keep only matched data
+  if (nrow(matched) > 0) {
+    cat("✅ Matches found:", nrow(matched), "\n")
+    all_matching_variants <- bind_rows(all_matching_variants, matched)
+  } else {
+    cat("➖ No matches. Releasing memory for sample", sample_id, "\n")
+  }
+
+  # Clean up
+  rm(annovar_data, matched)
+  gc()
+}
+
+# Final check
+cat("🎉 Done! Total matched variants:", nrow(all_matching_variants), "\n")
+
+# (Optional) Save results
+write_csv(all_matching_variants, "matched_variants_all_samples.csv")
+
+```
+
+
+# refGene stuff
+```{r}
+file_path <- "/usr/local/bin/humandb/hg38_refGene.txt"
+refGene_data <- read.table(file_path, header = FALSE, sep = "\t", stringsAsFactors = FALSE)
+
+# Assign column names
+colnames(refGene_data) <- c("bin", "name", "chrom", "strand", "txStart", "txEnd", "cdsStart", "cdsEnd", "exonCount", "exonStarts", "exonEnds", "score", "geneName", "cdsStartStat", "cdsEndStat", "exonFrames")
+
+# View the first few rows of the data
+head(refGene_data)
+
+# Extract gene names from refGene_data
+refGene_data_genenames <- unique(refGene_data$geneName)
+
+# Extract gene names from each list
+hearing_loss_genes <- gene_lists$Hearing_loss_gl$Gene
+eatef_genes <- gene_lists$EATEF_gl$Gene
+microtia_genes <- gene_lists$Microtia_gl$Gene
+
+# Clean the gene names using stringr
+hearing_loss_genes_clean <- str_trim(hearing_loss_genes)
+eatef_genes_clean <- str_trim(eatef_genes)
+microtia_genes_clean <- str_trim(microtia_genes)
+
+# Find genes not in refGene_data
+hearing_loss_not_in_refGene_clean <- setdiff(hearing_loss_genes_clean, refGene_data_genenames)
+eatef_not_in_refGene_clean <- setdiff(eatef_genes_clean, refGene_data_genenames)
+microtia_not_in_refGene_clean <- setdiff(microtia_genes_clean, refGene_data_genenames)
+
+# View the cleaned results
+print(hearing_loss_not_in_refGene_clean)
+print(eatef_not_in_refGene_clean)
+print(microtia_not_in_refGene_clean)
+```
+
+
+## Looking for descriptions
+
+```{r}
+ah <- AnnotationHub()
+
+# Query for the EnsDb database
+query(ah, "EnsDb.Hsapiens.v100")
+
+# Retrieve the EnsDb object
+edb <- ah[["AH79689"]]
+
+# Extract unique gene names from refGene_data
+refGene_data_genenames <- unique(refGene_data$geneName)
+
+# Function to get gene descriptions
+get_gene_descriptions <- function(genes, edb) {
+    gene_info <- genes(edb, filter = GeneNameFilter(genes))
+    return(gene_info)
+}
+
+# Get descriptions for all genes in refGene_data
+all_gene_descriptions <- get_gene_descriptions(refGene_data_genenames, edb)
+
+# View the results
+print(all_gene_descriptions)
+```
+
+
+## Looking for descriptionless genes
+
+```{r}
+# Pad with NA to equal length
+max_len <- max(length(hearing_loss_not_in_refGene_clean), 
+               length(eatef_not_in_refGene_clean), 
+               length(microtia_not_in_refGene_clean))
+
+hearing_pad <- c(hearing_loss_not_in_refGene_clean, rep(NA, max_len - length(hearing_loss_not_in_refGene_clean)))
+eatef_pad <- c(eatef_not_in_refGene_clean, rep(NA, max_len - length(eatef_not_in_refGene_clean)))
+microtia_pad <- c(microtia_not_in_refGene_clean, rep(NA, max_len - length(microtia_not_in_refGene_clean)))
+
+# Combine into a data frame
+missing_genes_df <- data.frame(
+    hearing_loss = hearing_pad,
+    eatef = eatef_pad,
+    microtia = microtia_pad,
+    stringsAsFactors = FALSE
+)
+
+# Save to CSV
+write.csv(missing_genes_df, "running_annovar_hg38/final_filtering_all_concatenated_Feb_13/missing_genes_by_phenotype.csv", row.names = FALSE)
+
+# Optional: print preview
+head(missing_genes_df)
+```
+
+
+```{r}
+# Extract metadata as data frame
+gene_meta <- as.data.frame(mcols(all_gene_descriptions))
+
+# Keep only gene_name and description
+gene_description_df <- gene_meta[, c("gene_name", "description")]
+
+# Just to be safe, remove duplicates (if any)
+gene_description_df <- unique(gene_description_df)
+
+# Optional: sort alphabetically by gene name
+gene_description_df <- gene_description_df[order(gene_description_df$gene_name), ]
+
+write.csv(gene_description_df, "running_annovar_hg38/final_filtering_all_concatenated_Feb_13/refGene_gene_descriptions.csv", row.names = FALSE)
+
+
 ```
 
